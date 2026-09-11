@@ -32,14 +32,29 @@ sudo pacman -S --needed \
   cmake meson ninja glm cpio
 
 step "Installing the IPTS touch driver (DKMS ipts/$IPTS_VER)"
-if dkms status "ipts/$IPTS_VER" 2>/dev/null | grep -q installed; then
+if dkms status "ipts/$IPTS_VER" 2>/dev/null | grep -q installed &&
+  diff -rq "$REPO_DIR/driver/ipts" "/usr/src/ipts-$IPTS_VER" >/dev/null 2>&1; then
   echo "Already installed: $(dkms status "ipts/$IPTS_VER")"
 else
+  # Rebuild when the driver source changed, e.g. to pick up fixes.
+  sudo dkms remove "ipts/$IPTS_VER" --all 2>/dev/null || true
+  sudo rm -rf "/usr/src/ipts-$IPTS_VER"
   sudo install -d "/usr/src/ipts-$IPTS_VER"
   sudo install -m644 "$REPO_DIR"/driver/ipts/* "/usr/src/ipts-$IPTS_VER/"
   sudo dkms install "ipts/$IPTS_VER"
+  sudo modprobe -r ipts 2>/dev/null || true
 fi
 sudo modprobe ipts
+
+step "Installing iptsd for multi-touch and the pen (linux-surface repo)"
+if ! grep -q '^\[linux-surface\]' /etc/pacman.conf; then
+  curl -fsSL https://raw.githubusercontent.com/linux-surface/linux-surface/master/pkg/keys/surface.asc | sudo pacman-key --add -
+  sudo pacman-key --lsign-key 56C464BAAC421453
+  sudo cp /etc/pacman.conf "/etc/pacman.conf.bak.$(date +%s)"
+  printf '\n[linux-surface]\nServer = https://pkg.surfacelinux.com/arch/\n' | sudo tee -a /etc/pacman.conf >/dev/null
+fi
+sudo pacman -Syu --needed iptsd
+sudo udevadm trigger --action=add --subsystem-match=hidraw
 
 step "Building the keyboard ($WVKBD_REPO, $WVKBD_BRANCH)"
 mkdir -p "$SRC_DIR"

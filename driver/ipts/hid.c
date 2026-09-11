@@ -168,7 +168,7 @@ int ipts_hid_input_data(struct ipts_context *ipts, u32 buffer)
 
 	memcpy(frame->data, header->data, header->size);
 
-	return hid_input_report(ipts->hid, HID_INPUT_REPORT, temp, IPTS_HID_REPORT_DATA_SIZE, 1);
+	return hid_input_report(ipts->hid, HID_INPUT_REPORT, temp, IPTS_HID_REPORT_BUFFER_SIZE, 1);
 }
 
 int ipts_hid_init(struct ipts_context *ipts, struct ipts_device_info info)

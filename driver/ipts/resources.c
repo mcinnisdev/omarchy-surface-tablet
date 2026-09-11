@@ -88,7 +88,7 @@ int ipts_resources_init(struct ipts_resources *res, struct device *dev, size_t d
 		goto err;
 
 	if (!res->report.address) {
-		res->report.size = IPTS_HID_REPORT_DATA_SIZE;
+		res->report.size = IPTS_HID_REPORT_BUFFER_SIZE;
 		res->report.address = kzalloc(res->report.size, GFP_KERNEL);
 
 		if (!res->report.address) {

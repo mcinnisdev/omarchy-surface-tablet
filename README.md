@@ -101,7 +101,7 @@ Toggle rotation lock with a four-finger tap or `tablet-autorotate lock`.
 
 - Only tested on a Surface Pro 4. Other IPTS Surfaces might work with the same
   driver but are untested.
-- The Surface Pen isn't set up yet.
+- The Surface Pen shows up through iptsd but hasn't been tested.
 - hyprgrass is still alpha.
 
 ## Credits and license

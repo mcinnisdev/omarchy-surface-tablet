@@ -17,6 +17,13 @@
 #define IPTS_HID_REPORT_DATA_SIZE 7485
 
 /*
+ * The data report in the descriptor below is 7487 bytes after its report ID. Kernels
+ * before 7.x zero-padded shorter reports (writing past the end of the buffer); newer
+ * ones reject them, so the buffer handed to the HID core must hold the whole report.
+ */
+#define IPTS_HID_REPORT_BUFFER_SIZE (IPTS_HID_REPORT_DATA_SIZE + 3)
+
+/*
  * HID descriptor for singletouch data.
  * This descriptor should be present on all IPTS devices.
  */
