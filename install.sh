@@ -60,7 +60,8 @@ echo "$(wc -l <"$DATA_DIR/swipe-words.tsv") words"
 
 step "Installing scripts and Hyprland config"
 install -Dm755 -t "$HOME/.local/bin" \
-  "$REPO_DIR/bin/tablet-keyboard" "$REPO_DIR/bin/tablet-autorotate" "$REPO_DIR/bin/tablet-menu-sync"
+  "$REPO_DIR/bin/tablet-keyboard" "$REPO_DIR/bin/tablet-autorotate" "$REPO_DIR/bin/tablet-menu-sync" \
+  "$REPO_DIR/bin/tablet-gestures"
 if [[ -f $HYPR_DIR/tablet.lua ]] && ! cmp -s "$REPO_DIR/hypr/tablet.lua" "$HYPR_DIR/tablet.lua"; then
   cp "$HYPR_DIR/tablet.lua" "$HYPR_DIR/tablet.lua.bak.$(date +%s)"
 fi
@@ -88,6 +89,25 @@ hook_dir="$HOME/.config/omarchy/hooks/post-update.d"
 mkdir -p "$hook_dir"
 printf '#!/bin/bash\n# Rebuild the keyboard-friendly Omarchy menu copy after updates.\nexec "$HOME/.local/bin/tablet-menu-sync"\n' >"$hook_dir/tablet-menu-sync-hook"
 chmod +x "$hook_dir/tablet-menu-sync-hook"
+
+step "Setting up gesture settings (Omarchy menu > Setup > Gestures)"
+"$HOME/.local/bin/tablet-gestures" apply
+python3 - "$HOME/.config/omarchy/extensions/omarchy-menu.jsonc" <<'PY'
+import os
+import sys
+
+path = sys.argv[1]
+entry = '  "setup.gestures": {"icon":"󰆽","label":"Gestures","description":"Touch gestures for tablet mode","action":"tablet-gestures","aliases":["gestures"]},\n'
+try:
+    text = open(path).read()
+except FileNotFoundError:
+    text = "{\n}\n"
+if '"setup.gestures"' not in text:
+    end = text.rstrip().rfind("}")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        f.write(text[:end] + entry + text[end:])
+PY
 
 step "Done"
 echo "Log out and back in to start the keyboard and auto-rotation."

@@ -37,8 +37,6 @@ o.launch_on_start("tablet-keyboard start")
 o.exec_on_start("bash -c 'hyprpm reload -n && hyprctl reload'")
 
 if hl.plugin.hyprgrass then
-  local hg = hl.plugin.hyprgrass
-
   hl.config({
     plugin = {
       hyprgrass = {
@@ -53,22 +51,12 @@ if hl.plugin.hyprgrass then
     },
   })
 
-  -- Swipe up from the bottom edge: toggle the on-screen keyboard.
-  hg.bind({ pattern = { kind = "edge", origin = "down", direction = "up" }, action = hl.dsp.exec_cmd("tablet-keyboard toggle") })
-
-  -- Swipe down from the top edge: Omarchy menu.
-  hg.bind({ pattern = { kind = "edge", origin = "up", direction = "down" }, action = hl.dsp.exec_cmd("omarchy-menu toggle") })
-
-  -- Three fingers sideways: switch workspace, following your fingers.
-  hg.gesture({ pattern = { kind = "swipe", fingers = 3, direction = "horizontal" }, action = "workspace" })
-
-  -- Three fingers down: close window. Three fingers up: scratchpad.
-  hg.gesture({ pattern = { kind = "swipe", fingers = 3, direction = "down" }, action = "close" })
-  hg.bind({ pattern = { kind = "swipe", fingers = 3, direction = "up" }, action = hl.dsp.workspace.toggle_special("scratchpad") })
-
-  -- Hold two fingers on a window, then drag to move it.
-  hg.bind({ pattern = { kind = "longpress", fingers = 2 }, action = hl.dsp.window.drag(), mouse = true })
-
-  -- Four-finger tap: toggle rotation lock.
-  hg.bind({ pattern = { kind = "tap", fingers = 4 }, action = hl.dsp.exec_cmd("tablet-autorotate lock") })
+  -- Gestures are managed with tablet-gestures (Omarchy menu > Setup > Gestures),
+  -- which writes them to tablet-gestures.lua.
+  local gestures = (os.getenv("HOME") or "") .. "/.config/hypr/tablet-gestures.lua"
+  local file = io.open(gestures, "r")
+  if file then
+    file:close()
+    dofile(gestures)
+  end
 end

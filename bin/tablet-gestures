@@ -1,0 +1,464 @@
+#!/usr/bin/env python3
+"""Touch gesture settings for Omarchy tablet mode.
+
+Shows the hyprgrass touch gestures in the Omarchy menu and lets you add new
+ones, change what they do, or remove them. Gestures are kept in
+~/.config/hypr/tablet-gestures.json and written out as hyprgrass bindings in
+~/.config/hypr/tablet-gestures.lua, which hypr/tablet.lua loads.
+
+  tablet-gestures          open the gesture menu
+  tablet-gestures list     print the current gestures
+  tablet-gestures apply    rewrite the bindings and reload Hyprland
+  tablet-gestures reset    go back to the default gestures
+"""
+
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
+
+HYPR_DIR = os.path.expanduser("~/.config/hypr")
+STORE = os.path.join(HYPR_DIR, "tablet-gestures.json")
+LUA_FILE = os.path.join(HYPR_DIR, "tablet-gestures.lua")
+MENU_WIDTH = 720
+
+
+def lua_str(text):
+    return '"' + text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n") + '"'
+
+
+def run(command):
+    return f"hl.dsp.exec_cmd({lua_str(command)})"
+
+
+# What a gesture can do. "bind" is a dispatcher for gestures that fire once,
+# "live" a hyprgrass gesture action that follows the fingers, "mouse" binds only
+# work with holds, and "axis" actions need a left-or-right / up-or-down swipe.
+ACTIONS = {
+    "keyboard": {"icon": "󰌌", "label": "Show or hide the keyboard", "bind": run("tablet-keyboard toggle")},
+    "omarchy-menu": {"icon": "󰍜", "label": "Omarchy menu", "bind": run("omarchy-menu toggle")},
+    "apps": {"icon": "󰀻", "label": "Apps menu", "bind": run("omarchy-menu toggle apps")},
+    "system-menu": {"icon": "", "label": "System menu", "bind": run("omarchy-menu toggle system")},
+    "capture-menu": {"icon": "", "label": "Capture menu", "bind": run("omarchy-menu toggle capture")},
+    "screenshot": {"icon": "", "label": "Take a screenshot", "bind": run("omarchy capture screenshot")},
+    "keybindings": {"icon": "", "label": "Keybindings", "bind": run("omarchy-menu-keybindings")},
+    "emoji": {"icon": "", "label": "Emoji picker", "bind": run("omarchy-shell shell toggle omarchy.emojis")},
+    "clipboard": {"icon": "", "label": "Clipboard history", "bind": run("omarchy-shell shell toggle omarchy.clipboard")},
+    "gestures": {"icon": "󰆽", "label": "Gesture settings", "bind": run("tablet-gestures")},
+    "workspace": {"icon": "󰓡", "label": "Switch workspace (follows your fingers)", "live": "workspace", "axis": True},
+    "next-workspace": {"icon": "󰒭", "label": "Next workspace", "bind": 'hl.dsp.focus({ workspace = "e+1" })'},
+    "previous-workspace": {"icon": "󰒮", "label": "Previous workspace", "bind": 'hl.dsp.focus({ workspace = "e-1" })'},
+    "close": {"icon": "󰅖", "label": "Close window", "bind": "hl.dsp.window.close()", "live": "close"},
+    "fullscreen": {"icon": "󰊓", "label": "Toggle fullscreen", "bind": 'hl.dsp.window.fullscreen({ mode = "fullscreen" })', "live": "fullscreen"},
+    "float": {"icon": "󰖲", "label": "Toggle floating", "bind": 'hl.dsp.window.float({ action = "toggle" })'},
+    "scratchpad": {"icon": "󰎞", "label": "Toggle scratchpad", "bind": 'hl.dsp.workspace.toggle_special("scratchpad")'},
+    "move-window": {"icon": "󰆾", "label": "Move window (hold, then drag)", "bind": "hl.dsp.window.drag()", "mouse": True},
+    "resize-window": {"icon": "󰁌", "label": "Resize window (hold, then drag)", "bind": "hl.dsp.window.resize()", "mouse": True},
+    "rotation-lock": {"icon": "󰑵", "label": "Lock or unlock rotation", "bind": run("tablet-autorotate lock")},
+    "volume-up": {"icon": "󰕾", "label": "Volume up", "bind": run("omarchy-audio-output-volume raise")},
+    "volume-down": {"icon": "󰕿", "label": "Volume down", "bind": run("omarchy-audio-output-volume lower")},
+    "mute": {"icon": "󰖁", "label": "Mute or unmute", "bind": run("omarchy-audio-output-volume mute-toggle")},
+    "brightness-up": {"icon": "󰃠", "label": "Brightness up", "bind": run("omarchy-brightness-display +5%")},
+    "brightness-down": {"icon": "󰃞", "label": "Brightness down", "bind": run("omarchy-brightness-display 5%-")},
+    "play-pause": {"icon": "󰐎", "label": "Play or pause", "bind": run("omarchy-shell media playPause")},
+    "next-track": {"icon": "󰒭", "label": "Next track", "bind": run("omarchy-shell media next")},
+    "previous-track": {"icon": "󰒮", "label": "Previous track", "bind": run("omarchy-shell media previous")},
+    "dismiss-notifications": {"icon": "󰂛", "label": "Dismiss notifications", "bind": run("omarchy-shell notifications dismissAll")},
+    "lock": {"icon": "", "label": "Lock the screen", "bind": run("omarchy system lock")},
+}
+COMMAND_ICON = ""
+
+DEFAULTS = [
+    {"trigger": {"kind": "edge", "origin": "down", "direction": "up"}, "action": "keyboard"},
+    {"trigger": {"kind": "edge", "origin": "up", "direction": "down"}, "action": "omarchy-menu"},
+    {"trigger": {"kind": "swipe", "fingers": 3, "direction": "horizontal"}, "action": "workspace"},
+    {"trigger": {"kind": "swipe", "fingers": 3, "direction": "down"}, "action": "close"},
+    {"trigger": {"kind": "swipe", "fingers": 3, "direction": "up"}, "action": "scratchpad"},
+    {"trigger": {"kind": "longpress", "fingers": 2}, "action": "move-window"},
+    {"trigger": {"kind": "tap", "fingers": 4}, "action": "rotation-lock"},
+]
+
+EDGES = {"down": "bottom", "up": "top", "left": "left", "right": "right"}
+DIRECTIONS = {
+    "up": "up",
+    "down": "down",
+    "left": "left",
+    "right": "right",
+    "horizontal": "left or right",
+    "vertical": "up or down",
+}
+
+KIND_OPTIONS = [
+    ("edge", "󰆽", "Swipe in from an edge", "One finger, starting at the edge of the screen"),
+    ("swipe", "󰆽", "Swipe with several fingers", ""),
+    ("tap", "󰆽", "Tap with several fingers", ""),
+    ("longpress", "󰆽", "Hold with several fingers", "Hold still; move and resize can then drag"),
+    ("pinch", "󰆽", "Pinch", ""),
+]
+ORIGIN_OPTIONS = [
+    ("down", "󰁅", "Bottom edge", ""),
+    ("up", "󰁝", "Top edge", ""),
+    ("left", "󰁍", "Left edge", ""),
+    ("right", "󰁔", "Right edge", ""),
+]
+DIRECTION_OPTIONS = [
+    ("up", "󰁝", "Up", ""),
+    ("down", "󰁅", "Down", ""),
+    ("left", "󰁍", "Left", ""),
+    ("right", "󰁔", "Right", ""),
+    ("horizontal", "󰓡", "Left or right", "Follows your fingers, for switching workspaces"),
+    ("vertical", "󰓢", "Up or down", "Follows your fingers, for switching workspaces"),
+]
+FINGER_OPTIONS = [
+    (2, "󰆽", "2 fingers", "Apps also use two fingers to scroll and zoom"),
+    (3, "󰆽", "3 fingers", ""),
+    (4, "󰆽", "4 fingers", ""),
+    (5, "󰆽", "5 fingers", ""),
+]
+PINCH_OPTIONS = [
+    ("pinchin", "󰆽", "Pinch in", ""),
+    ("pinchout", "󰆽", "Pinch out", ""),
+]
+
+
+# --- gestures -----------------------------------------------------------------
+
+
+def describe(trigger):
+    kind = trigger["kind"]
+    if kind == "edge":
+        return f"Swipe {DIRECTIONS[trigger['direction']]} from the {EDGES[trigger['origin']]} edge"
+    fingers = f"{trigger['fingers']} fingers"
+    if kind == "swipe":
+        return f"Swipe {DIRECTIONS[trigger['direction']]} with {fingers}"
+    if kind == "tap":
+        return f"Tap with {fingers}"
+    if kind == "longpress":
+        return f"Hold with {fingers}"
+    return f"Pinch {'in' if trigger['direction'] == 'pinchin' else 'out'} with {fingers}"
+
+
+def action_of(gesture):
+    if gesture.get("action") == "command":
+        return {"icon": COMMAND_ICON, "label": f"Run {gesture['command']}", "bind": run(gesture["command"])}
+    return ACTIONS.get(gesture.get("action"))
+
+
+def compatible(action, trigger):
+    if trigger.get("direction") in ("horizontal", "vertical"):
+        return bool(action.get("axis")) and trigger["kind"] in ("swipe", "edge")
+    if action.get("axis"):
+        return False
+    if action.get("mouse"):
+        return trigger["kind"] == "longpress"
+    return "bind" in action
+
+
+def same_trigger(a, b):
+    keys = ("kind", "origin", "fingers", "direction")
+    return all(a.get(k) == b.get(k) for k in keys)
+
+
+def find(gestures, trigger):
+    for i, gesture in enumerate(gestures):
+        if same_trigger(gesture["trigger"], trigger):
+            return i
+    return None
+
+
+def defaults():
+    return json.loads(json.dumps(DEFAULTS))
+
+
+def load():
+    try:
+        with open(STORE) as f:
+            return json.load(f).get("gestures", [])
+    except FileNotFoundError:
+        return defaults()
+
+
+def write_atomically(path, text):
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
+def pattern_lua(trigger):
+    parts = [f'kind = "{trigger["kind"]}"']
+    if trigger["kind"] == "edge":
+        parts.append(f'origin = "{trigger["origin"]}"')
+    else:
+        parts.append(f"fingers = {int(trigger['fingers'])}")
+    if "direction" in trigger:
+        parts.append(f'direction = "{trigger["direction"]}"')
+    return "{ " + ", ".join(parts) + " }"
+
+
+def binding_lua(gesture, action):
+    trigger = gesture["trigger"]
+    pattern = pattern_lua(trigger)
+    # Swipes follow the fingers when the action supports it.
+    if "live" in action and trigger["kind"] in ("swipe", "edge"):
+        return f'hg.gesture({{ pattern = {pattern}, action = "{action["live"]}" }})'
+    mouse = ", mouse = true" if action.get("mouse") else ""
+    return f"hg.bind({{ pattern = {pattern}, action = {action['bind']}{mouse} }})"
+
+
+def apply(gestures):
+    """Save the gestures, write the hyprgrass bindings and reload Hyprland.
+    Returns Hyprland's config errors, if any."""
+    os.makedirs(HYPR_DIR, exist_ok=True)
+    write_atomically(STORE, json.dumps({"gestures": gestures}, indent=2) + "\n")
+
+    lines = [
+        "-- Generated by tablet-gestures from tablet-gestures.json; changes here are overwritten.",
+        "-- Edit gestures with tablet-gestures (Omarchy menu > Setup > Gestures).",
+        "local hg = hl.plugin.hyprgrass",
+        "if not hg then",
+        "  return",
+        "end",
+        "",
+    ]
+    for gesture in gestures:
+        action = action_of(gesture)
+        description = describe(gesture["trigger"])
+        if not action or not compatible(action, gesture["trigger"]):
+            lines.append(f"-- Skipped {description}: unsupported action {gesture.get('action')!r}")
+            continue
+        lines.append(f"-- {description}: {action['label']}")
+        lines.append(binding_lua(gesture, action))
+    write_atomically(LUA_FILE, "\n".join(lines) + "\n")
+
+    subprocess.run(["hyprctl", "reload"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(0.5)
+    result = subprocess.run(["hyprctl", "configerrors"], capture_output=True, text=True)
+    errors = result.stdout.strip()
+    if errors:
+        subprocess.run(["omarchy-notification-send", "-g", "󰆽", "Gesture settings", "Hyprland reported: " + errors.splitlines()[0]])
+    return errors
+
+
+# --- menus --------------------------------------------------------------------
+
+
+def wait_for_menu_to_close():
+    # When started from the Omarchy menu, let it finish closing first.
+    for _ in range(40):
+        layers = subprocess.run(["hyprctl", "layers", "-j"], capture_output=True, text=True).stdout
+        if '"omarchy-menu"' not in layers:
+            return
+        time.sleep(0.05)
+
+
+def choose(prompt, options, width=MENU_WIDTH):
+    """options: (value, icon, label, subtext). Labels must be unique."""
+    rows = [f"{icon}\t{label}" + (f"\t{sub}" if sub else "") for _, icon, label, sub in options]
+    result = subprocess.run(
+        ["omarchy-menu-select", prompt, *rows, "--", "--width", str(width)],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    picked = result.stdout.rstrip("\n").split("\t")[0]
+    if result.returncode != 0 or not picked:
+        return None
+    for value, _, label, _ in options:
+        if label == picked:
+            return value
+    return None
+
+
+def ask(prompt):
+    """Free text through the Omarchy menu's input mode."""
+    with tempfile.TemporaryDirectory() as tmp:
+        selection = os.path.join(tmp, "selection")
+        done = os.path.join(tmp, "done")
+        open(selection, "w").close()
+        payload = {
+            "mode": "input",
+            "prompt": prompt,
+            "options": [],
+            "selectionFile": selection,
+            "doneFile": done,
+            "width": MENU_WIDTH,
+        }
+        subprocess.run(["omarchy-shell", "shell", "summon", "omarchy.menu", json.dumps(payload)], stdout=subprocess.DEVNULL)
+        while not os.path.exists(done):
+            time.sleep(0.05)
+        with open(selection) as f:
+            text = f.read().strip()
+    return text or None
+
+
+def confirm(prompt, yes):
+    return choose(prompt, [(True, "󰄬", yes, ""), (False, "󰜺", "Cancel", "")], 560) is True
+
+
+def pick_trigger():
+    kind = choose("Choose a gesture", KIND_OPTIONS)
+    if kind is None:
+        return None
+    if kind == "edge":
+        origin = choose("Start from which edge?", ORIGIN_OPTIONS)
+        if origin is None:
+            return None
+        direction = choose("Swipe which way?", DIRECTION_OPTIONS)
+        return None if direction is None else {"kind": "edge", "origin": origin, "direction": direction}
+
+    fingers = choose("How many fingers?", FINGER_OPTIONS)
+    if fingers is None:
+        return None
+    if kind == "swipe":
+        direction = choose("Swipe which way?", DIRECTION_OPTIONS)
+        return None if direction is None else {"kind": "swipe", "fingers": fingers, "direction": direction}
+    if kind == "pinch":
+        direction = choose("Pinch which way?", PINCH_OPTIONS)
+        return None if direction is None else {"kind": "pinch", "fingers": fingers, "direction": direction}
+    return {"kind": kind, "fingers": fingers}
+
+
+def pick_action(trigger, current=None):
+    options = [
+        (key, action["icon"], action["label"], "Current" if key == current else "")
+        for key, action in ACTIONS.items()
+        if compatible(action, trigger)
+    ]
+    axis = trigger.get("direction") in ("horizontal", "vertical")
+    if not axis:
+        options.append(("command", COMMAND_ICON, "Run a command…", "Type any shell command"))
+    key = choose(f"{describe(trigger)} will…", options)
+    if key == "command":
+        command = ask("Command to run")
+        return {"action": "command", "command": command} if command else None
+    return None if key is None else {"action": key}
+
+
+def add_gesture(gestures):
+    trigger = pick_trigger()
+    if trigger is None:
+        return False
+    action = pick_action(trigger)
+    if action is None:
+        return False
+    existing = find(gestures, trigger)
+    if existing is not None:
+        old = action_of(gestures[existing])
+        if not confirm(f"{describe(trigger)} already does: {old['label'] if old else 'something else'}", "Replace it"):
+            return False
+        gestures[existing] = {"trigger": trigger, **action}
+    else:
+        gestures.append({"trigger": trigger, **action})
+    return True
+
+
+def edit_gesture(gestures, index):
+    gesture = gestures[index]
+    action = action_of(gesture)
+    description = describe(gesture["trigger"])
+    choice = choose(
+        description,
+        [
+            ("action", "󰏫", "Change what it does", f"Now: {action['label']}" if action else ""),
+            ("trigger", "󰆽", "Change the gesture", ""),
+            ("remove", "󰆴", "Remove", ""),
+        ],
+        560,
+    )
+
+    if choice == "action":
+        new_action = pick_action(gesture["trigger"], gesture.get("action"))
+        if new_action is None:
+            return False
+        gestures[index] = {"trigger": gesture["trigger"], **new_action}
+        return True
+
+    if choice == "trigger":
+        trigger = pick_trigger()
+        if trigger is None:
+            return False
+        if action and compatible(action, trigger):
+            new_action = {k: v for k, v in gesture.items() if k != "trigger"}
+        else:
+            new_action = pick_action(trigger)
+            if new_action is None:
+                return False
+        other = find(gestures, trigger)
+        if other is not None and other != index:
+            old = action_of(gestures[other])
+            if not confirm(f"{describe(trigger)} already does: {old['label'] if old else 'something else'}", "Replace it"):
+                return False
+            gestures.pop(other)
+            if other < index:
+                index -= 1
+        gestures[index] = {"trigger": trigger, **new_action}
+        return True
+
+    if choice == "remove":
+        if not confirm(f"Remove “{description}”?", "Remove"):
+            return False
+        gestures.pop(index)
+        return True
+
+    return False
+
+
+def menu():
+    wait_for_menu_to_close()
+    while True:
+        gestures = load()
+        options = [("add", "󰐕", "Add a gesture", "")]
+        for i, gesture in enumerate(gestures):
+            action = action_of(gesture)
+            options.append(
+                (
+                    i,
+                    action["icon"] if action else "",
+                    describe(gesture["trigger"]),
+                    action["label"] if action else f"Unknown action {gesture.get('action')!r}",
+                )
+            )
+        options.append(("reset", "󰑓", "Reset to the default gestures", ""))
+
+        choice = choose("Gestures", options)
+        if choice is None:
+            return
+        if choice == "add":
+            changed = add_gesture(gestures)
+        elif choice == "reset":
+            changed = confirm("Replace all gestures with the defaults?", "Reset")
+            if changed:
+                gestures = defaults()
+        else:
+            changed = edit_gesture(gestures, choice)
+        if changed:
+            apply(gestures)
+
+
+def main():
+    command = sys.argv[1] if len(sys.argv) > 1 else "menu"
+    if command == "menu":
+        menu()
+    elif command == "list":
+        for gesture in load():
+            action = action_of(gesture)
+            print(f"{describe(gesture['trigger'])}: {action['label'] if action else gesture.get('action')}")
+    elif command == "apply":
+        errors = apply(load())
+        if errors:
+            print(errors, file=sys.stderr)
+            sys.exit(1)
+    elif command == "reset":
+        errors = apply(defaults())
+        if errors:
+            print(errors, file=sys.stderr)
+            sys.exit(1)
+    else:
+        print(__doc__.strip(), file=sys.stderr)
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()

@@ -44,7 +44,11 @@ Then log out and back in.
 | Long-press a window border | Resize |
 | Four-finger tap | Toggle rotation lock |
 
-Edit them in `~/.config/hypr/tablet.lua`.
+These are the defaults. To see, add, change or remove gestures, open
+**Omarchy menu → Setup → Gestures** (or run `tablet-gestures`). Pick a gesture
+type, the fingers or edge, and a direction, then an action from the list or any
+shell command. Gestures are stored in `~/.config/hypr/tablet-gestures.json` and
+`tablet-gestures list` prints them.
 
 ## Keyboard
 
