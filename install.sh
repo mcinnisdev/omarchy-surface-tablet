@@ -54,6 +54,9 @@ if ! grep -q '^\[linux-surface\]' /etc/pacman.conf; then
   printf '\n[linux-surface]\nServer = https://pkg.surfacelinux.com/arch/\n' | sudo tee -a /etc/pacman.conf >/dev/null
 fi
 sudo pacman -Syu --needed iptsd
+# iptsd 3.1.0's built-in contact thresholds miss fingertips on the SP4 (iptsd#210).
+sudo install -Dm644 "$REPO_DIR/iptsd/90-sp4-contacts.conf" /etc/iptsd.d/90-sp4-contacts.conf
+sudo systemctl restart 'iptsd@*.service' 2>/dev/null || true
 sudo udevadm trigger --action=add --subsystem-match=hidraw
 
 step "Building the keyboard ($WVKBD_REPO, $WVKBD_BRANCH)"

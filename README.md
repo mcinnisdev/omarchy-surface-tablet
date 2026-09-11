@@ -19,6 +19,15 @@ kernel already detects the touch controller, so it only needs the driver as a
 module. You keep normal kernel updates; if a future kernel ever breaks the
 build, only touch stops working until the driver is fixed.
 
+## Multi-touch
+
+In its default mode the SP4 touch firmware reports one finger at a time.
+[iptsd](https://github.com/linux-surface/iptsd), installed from the linux-surface
+repo, switches it to multi-touch and handles the pen. iptsd 3.1.0's built-in
+contact thresholds miss fingertips on the SP4, so `iptsd/90-sp4-contacts.conf`
+sets them back to the documented values
+([iptsd#210](https://github.com/linux-surface/iptsd/issues/210)).
+
 ## Install
 
 Requires Omarchy (Hyprland 0.56+ with Lua config) on a Surface Pro 4.
