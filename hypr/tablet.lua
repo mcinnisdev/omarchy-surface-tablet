@@ -48,6 +48,9 @@ if hl.plugin.hyprgrass then
     },
     gestures = {
       workspace_swipe_cancel_ratio = 0.15,
+      -- Swipe by workspace number, so empty workspaces aren't skipped and new
+      -- ones keep getting created past the last one.
+      workspace_swipe_use_r = true,
     },
   })
 
