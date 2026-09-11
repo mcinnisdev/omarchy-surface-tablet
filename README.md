@@ -75,6 +75,17 @@ Size, transparency, border and font are set at the top of `~/.local/bin/tablet-k
 [word counts](https://norvig.com/ngrams/). Raise a word's count to make it win
 more often. Neither source is redistributed here; both are fetched at install time.
 
+## Menus
+
+Omarchy's menu covers the whole screen, which hides the keyboard when you want
+to type to filter (the keybindings list, app launcher, and so on).
+`tablet-menu-sync` installs a copy of the menu that is identical except that it
+stays clear of the space the keyboard reserves, so the menu sits above it.
+
+The copy is rebuilt from the current Omarchy menu by a post-update hook, so menu
+improvements keep coming through. `tablet-menu-sync remove` goes back to the
+built-in menu.
+
 ## Auto-rotation
 
 `tablet-autorotate` follows `iio-sensor-proxy` and rotates the screen, touch
