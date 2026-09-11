@@ -1,9 +1,12 @@
 #!/bin/bash
-# Keep a copy of the Omarchy menu that stays clear of the on-screen keyboard.
+# Keep a copy of the Omarchy menu that works with the on-screen keyboard.
 #
-# The built-in menu covers the whole screen, hiding the keyboard while you type
-# to filter. The copy is identical except that it respects the space the
-# keyboard reserves, so the menu sits above it.
+# The built-in menu covers the whole screen and holds exclusive keyboard focus,
+# which hides the keyboard and stops touches from reaching it while you type to
+# filter (Hyprland only hit-tests exclusive layers). The copy makes two changes:
+#   - it respects the space the keyboard reserves, so it sits above it
+#   - it asks for on-demand keyboard focus, which Hyprland still grants when the
+#     menu opens, but which lets touches reach the keyboard
 #
 #   tablet-menu-sync          (re)build the copy from the current Omarchy menu
 #   tablet-menu-sync remove   go back to the built-in menu
@@ -32,6 +35,34 @@ use_builtin() {
   wait_for 'any(.[]; .id == "omarchy.menu" and .enabled)'
 }
 
+# Each replaced line must appear exactly once, or Omarchy's menu has changed
+# and the copy isn't built.
+patch_menu() {
+  python3 - "$1" <<'PY'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+patches = [
+    (
+        "    exclusionMode: ExclusionMode.Ignore\n",
+        "    exclusionMode: ExclusionMode.Normal // tablet: stay clear of the on-screen keyboard\n",
+    ),
+    (
+        "    WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive\n",
+        "    // tablet: Hyprland focuses on-demand layers when they map, and unlike\n"
+        "    // Exclusive this doesn't block touches to the on-screen keyboard.\n"
+        "    WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand\n",
+    ),
+]
+for old, new in patches:
+    if src.count(old) != 1:
+        sys.exit("tablet-menu-sync: Omarchy's Menu.qml changed (%s); leaving the menu as it is" % old.strip())
+    src = src.replace(old, new)
+open(path, "w").write(src)
+PY
+}
+
 if [[ ${1:-} == remove ]]; then
   use_builtin
   rm -rf "$target"
@@ -52,12 +83,10 @@ jq --arg id "$id" '
 ' "$stage/manifest.json" >"$stage/manifest.json.tmp"
 mv "$stage/manifest.json.tmp" "$stage/manifest.json"
 
-if ! grep -q 'exclusionMode: ExclusionMode.Ignore' "$stage/Menu.qml"; then
+if ! patch_menu "$stage/Menu.qml"; then
   rm -rf "$stage"
-  echo "tablet-menu-sync: Omarchy's Menu.qml changed; leaving the menu as it is" >&2
   exit 1
 fi
-sed -i 's|exclusionMode: ExclusionMode.Ignore|exclusionMode: ExclusionMode.Normal // tablet: stay clear of the on-screen keyboard|' "$stage/Menu.qml"
 
 # Swap the copy in while the built-in menu is active, so a menu always works.
 use_builtin
@@ -84,4 +113,4 @@ if ! wait_for "any(.[]; .id == \"$id\" and .enabled)"; then
   exit 1
 fi
 
-echo "Using $id (Omarchy menu that stays clear of the on-screen keyboard)"
+echo "Using $id (Omarchy menu that works with the on-screen keyboard)"
