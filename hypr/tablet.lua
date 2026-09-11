@@ -40,7 +40,10 @@ if hl.plugin.hyprgrass then
   hl.config({
     plugin = {
       hyprgrass = {
-        sensitivity = 4.0,
+        -- One value covers both swipes and pinches: lower means a pinch is
+        -- harder to claim a three-finger swipe, and fingers may land further
+        -- apart before the swipe is cancelled.
+        sensitivity = 3.0,
         long_press_delay = 400,
         resize_on_border_long_press = true,
         edge_margin = 20,

@@ -1,0 +1,25 @@
+#!/bin/sh
+# Reload the IPTS touch driver around sleep (Surface Pro 4).
+#
+# The driver has no suspend support: the Intel ME drops it while suspending, and
+# on resume it probes before the touch controller is ready (GET_DEVICE_INFO: -11),
+# leaving no touchscreen. Reload it instead. The timeouts matter because a wedged
+# ME can block modprobe indefinitely, and this runs inside the sleep path.
+touchscreen_present() {
+  ls /sys/bus/hid/devices/ 2>/dev/null | grep -qi ':1B96:'
+}
+
+case "$1" in
+  pre)
+    timeout 10 modprobe -r ipts 2>/dev/null || true
+    ;;
+  post)
+    for attempt in 1 2 3; do
+      sleep 2
+      timeout 10 modprobe -r ipts 2>/dev/null || true
+      timeout 20 modprobe ipts || true
+      sleep 2
+      touchscreen_present && break
+    done
+    ;;
+esac

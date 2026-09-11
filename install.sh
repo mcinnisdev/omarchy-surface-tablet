@@ -58,6 +58,8 @@ sudo pacman -Syu --needed iptsd
 sudo install -Dm644 "$REPO_DIR/iptsd/90-sp4-contacts.conf" /etc/iptsd.d/90-sp4-contacts.conf
 sudo systemctl restart 'iptsd@*.service' 2>/dev/null || true
 sudo udevadm trigger --action=add --subsystem-match=hidraw
+# Touch does not survive sleep without reloading the driver (no suspend support).
+sudo install -m755 "$REPO_DIR/systemd/ipts-reload" /usr/lib/systemd/system-sleep/ipts-reload
 
 step "Building the keyboard ($WVKBD_REPO, $WVKBD_BRANCH)"
 mkdir -p "$SRC_DIR"

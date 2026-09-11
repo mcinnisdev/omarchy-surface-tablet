@@ -28,6 +28,12 @@ contact thresholds miss fingertips on the SP4, so `iptsd/90-sp4-contacts.conf`
 sets them back to the documented values
 ([iptsd#210](https://github.com/linux-surface/iptsd/issues/210)).
 
+Touch does not come back by itself after sleep: the driver has no suspend
+support and probes before the touch controller is ready. `systemd/ipts-reload`
+is installed as a sleep hook that reloads it. If touch is ever dead after a
+resume and reloading the driver hangs, the Intel ME is wedged and only a reboot
+clears it.
+
 ## Install
 
 Requires Omarchy (Hyprland 0.56+ with Lua config) on a Surface Pro 4.
