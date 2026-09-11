@@ -47,7 +47,12 @@ if hl.plugin.hyprgrass then
       },
     },
     gestures = {
-      workspace_swipe_cancel_ratio = 0.15,
+      -- hyprgrass scales finger travel to the screen width, so the ratio is the
+      -- share of the screen width to swipe (0.08 ≈ 2 cm on the SP4).
+      workspace_swipe_cancel_ratio = 0.08,
+      -- Average speed (per touch update, in the same scaled units) that switches
+      -- anyway; the default of 30 is out of reach for a finger on a touchscreen.
+      workspace_swipe_min_speed_to_force = 5,
       -- Swipe by workspace number, so empty workspaces aren't skipped and new
       -- ones keep getting created past the last one.
       workspace_swipe_use_r = true,
