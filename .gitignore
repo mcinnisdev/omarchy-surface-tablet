@@ -1,0 +1,8 @@
+# DKMS / kbuild artifacts if the driver is built in place
+driver/ipts/*.o
+driver/ipts/*.ko
+driver/ipts/*.mod
+driver/ipts/*.mod.c
+driver/ipts/.*.cmd
+driver/ipts/Module.symvers
+driver/ipts/modules.order

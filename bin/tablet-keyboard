@@ -1,0 +1,73 @@
+#!/bin/bash
+# Floating on-screen keyboard (wvkbd-tablet, built from ~/.local/src/wvkbd)
+# with swipe typing, colored from the current Omarchy theme.
+#
+#   tablet-keyboard start    start hidden (from hypr/tablet.lua)
+#   tablet-keyboard toggle   show/hide, starting it if needed
+#   tablet-keyboard reshow   re-layout if visible (after rotation)
+#   tablet-keyboard restart  restart hidden, picking up theme changes
+
+bin=wvkbd-tablet
+words="$HOME/.local/share/tablet-keyboard/swipe-words.tsv"
+
+theme_name=$(omarchy theme current | tr '[:upper:] ' '[:lower:]-')
+colors="$(omarchy theme dir "$theme_name")/colors.toml"
+
+# Float like a window: same 10px gap, 2px border and 6px corners as Hyprland.
+args=(
+  -L 320 -H 440
+  --margin 10 --width-ratio 65
+  --border 2 --corner 6 --padding 6
+  --fn "JetBrainsMono Nerd Font 14"
+  --swipe-words "$words"
+)
+
+# add_color <wvkbd flag> <colors.toml key> [alpha hex]
+add_color() {
+  local hex
+  hex=$(sed -nE "s/^$2[[:space:]]*=[[:space:]]*\"#([0-9a-fA-F]{6})\".*/\1/p" "$colors" 2>/dev/null | head -1)
+  [[ -n $hex ]] && args+=("$1" "$hex${3:-}")
+}
+
+# See-through (~60%) board with nearly solid (~94%) keys; opaque text and border.
+add_color --bg background 99
+add_color --fg selection f0
+add_color --fg-sp muted f0
+add_color --press accent
+add_color --press-sp accent
+add_color --text foreground
+add_color --text-sp foreground
+add_color --border-color active_border_color
+add_color --trail foreground e6
+
+running() { pgrep -x "$bin" >/dev/null; }
+visible() { hyprctl layers -j | jq -e '[.. | objects | select(.namespace? == "wvkbd")] | length > 0' >/dev/null; }
+
+case ${1:-toggle} in
+  start)
+    running || exec "$bin" --hidden "${args[@]}"
+    ;;
+  toggle)
+    if running; then
+      pkill --signal RTMIN -x "$bin"
+    else
+      setsid -f "$bin" "${args[@]}" >/dev/null 2>&1
+    fi
+    ;;
+  reshow)
+    if running && visible; then
+      pkill --signal SIGUSR1 -x "$bin"
+      sleep 0.2
+      pkill --signal SIGUSR2 -x "$bin"
+    fi
+    ;;
+  restart)
+    pkill -x "$bin"
+    sleep 0.3
+    setsid -f "$0" start >/dev/null 2>&1
+    ;;
+  *)
+    echo "usage: tablet-keyboard [start|toggle|reshow|restart]" >&2
+    exit 1
+    ;;
+esac

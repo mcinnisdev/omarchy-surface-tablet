@@ -1,0 +1,42 @@
+#!/bin/bash
+# Rotate the internal display and touch input to follow the accelerometer.
+#
+#   tablet-autorotate         follow iio-sensor-proxy (started from hypr/tablet.lua)
+#   tablet-autorotate lock    toggle rotation lock
+#
+# The current transform is written to $XDG_RUNTIME_DIR/tablet-rotation and
+# hypr/tablet.lua reads it, so rotation survives Hyprland config reloads.
+
+state="${XDG_RUNTIME_DIR:-/tmp}/tablet-rotation"
+lock="$state.lock"
+
+if [[ ${1:-} == lock ]]; then
+  if [[ -f $lock ]]; then
+    rm -f "$lock"
+    omarchy osd -i display -m "Auto-rotate on"
+  else
+    touch "$lock"
+    omarchy osd -i display -m "Rotation locked"
+  fi
+  exit 0
+fi
+
+apply() {
+  [[ -f $lock ]] && return
+  [[ $(cat "$state" 2>/dev/null) == "$1" ]] && return
+  echo "$1" >"$state"
+  hyprctl reload >/dev/null
+  # wvkbd doesn't follow output rotation on its own.
+  tablet-keyboard reshow
+}
+
+# Lines look like "Accelerometer orientation changed: left-up" or, on start,
+# "=== Has accelerometer (orientation: normal, tilt: vertical)".
+monitor-sensor | while read -r line; do
+  case $line in
+    *orientation*normal*) apply 0 ;;
+    *orientation*left-up*) apply 1 ;;
+    *orientation*bottom-up*) apply 2 ;;
+    *orientation*right-up*) apply 3 ;;
+  esac
+done
