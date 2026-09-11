@@ -96,14 +96,17 @@ more often. Neither source is redistributed here; both are fetched at install ti
 
 ## Menus
 
-Omarchy's menu covers the whole screen, which hides the keyboard when you want
-to type to filter (the keybindings list, app launcher, and so on).
-`tablet-menu-sync` installs a copy of the menu that is identical except that it
-stays clear of the space the keyboard reserves, so the menu sits above it.
+Omarchy's menu covers the whole screen and holds exclusive keyboard focus, so
+while a menu is open it hides the on-screen keyboard and Hyprland sends every
+touch to the menu instead of the keyboard. Typing to filter a menu therefore
+needs a physical keyboard.
 
-The copy is rebuilt from the current Omarchy menu by a post-update hook, so menu
-improvements keep coming through. `tablet-menu-sync remove` goes back to the
-built-in menu.
+`tablet-menu-sync` installs a copy of Omarchy's menu plugin that fixes both
+(it stays clear of the keyboard's reserved space and asks for on-demand focus),
+but it is **not installed by default**: Omarchy only hands its application
+library to first-party plugins, so a cloned menu shows an empty Apps submenu.
+Run `tablet-menu-sync` if you want menu typing by touch and can live without
+the Apps list; `tablet-menu-sync remove` goes back to the built-in menu.
 
 ## Auto-rotation
 

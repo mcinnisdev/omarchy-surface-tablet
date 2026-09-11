@@ -103,13 +103,6 @@ hyprpm reload -n
 hyprctl reload >/dev/null
 hyprctl configerrors
 
-step "Keeping Omarchy menus clear of the keyboard"
-"$HOME/.local/bin/tablet-menu-sync"
-hook_dir="$HOME/.config/omarchy/hooks/post-update.d"
-mkdir -p "$hook_dir"
-printf '#!/bin/bash\n# Rebuild the keyboard-friendly Omarchy menu copy after updates.\nexec "$HOME/.local/bin/tablet-menu-sync"\n' >"$hook_dir/tablet-menu-sync-hook"
-chmod +x "$hook_dir/tablet-menu-sync-hook"
-
 step "Setting up gesture settings (Omarchy menu > Setup > Gestures)"
 "$HOME/.local/bin/tablet-gestures" apply
 python3 - "$HOME/.config/omarchy/extensions/omarchy-menu.jsonc" <<'PY'
